@@ -1,38 +1,42 @@
 # Requirements Specification
 
-## Functional Requirements
+## Functional Requirements — Implementation Status
 
-### FR1: Patient Management
-- FR1.1: Register a new patient (name, age, gender, contact, address, blood group)
-- FR1.2: View patient list with search/filter
-- FR1.3: View individual patient details
-- FR1.4: Update patient information
-- FR1.5: Delete patient record (soft delete)
+### FR1: Patient Management ✅ Complete
+- FR1.1: ✅ Register a new patient (name, age, gender, contact, address, blood group) — API + Dashboard form
+- FR1.2: ✅ View patient list with search/filter — API + Dashboard with pagination
+- FR1.3: ✅ View individual patient details — API + Dashboard detail view with records & appointments
+- FR1.4: ✅ Update patient information — API + Dashboard edit form
+- FR1.5: ✅ Delete patient record (soft delete) — API + Dashboard delete button
 
-### FR2: Doctor Management
-- FR2.1: Register a doctor (name, specialization, contact, department)
-- FR2.2: View doctor list
-- FR2.3: Update doctor profile
+### FR2: Doctor Management ✅ Complete
+- FR2.1: ✅ Register a doctor (name, specialization, contact, department) — API + Dashboard form
+- FR2.2: ✅ View doctor list with search and department filter — API + Dashboard
+- FR2.3: ✅ Update doctor profile — API + Dashboard edit form
+- FR2.4: ✅ Delete doctor — API + Dashboard delete button
 
-### FR3: Appointment Management
-- FR3.1: Book an appointment (patient, doctor, date, time, reason)
-- FR3.2: View appointments (by date, doctor, patient)
-- FR3.3: Update appointment status (scheduled, completed, cancelled)
+### FR3: Appointment Management ✅ Complete
+- FR3.1: ✅ Book an appointment (patient, doctor, date, time, reason) — API + Dashboard form
+- FR3.2: ✅ View appointments with filters (by status, patient, doctor) — API + Dashboard
+- FR3.3: ✅ Update appointment status (scheduled, completed, cancelled) — API + Dashboard click-to-change
+- FR3.4: ✅ Delete appointment — API + Dashboard delete button
 
-### FR4: Medical Records
-- FR4.1: Create a medical record for a patient (diagnosis, prescription, notes)
-- FR4.2: Upload medical files (PDF reports, images) — stored locally in Phase 1, S3 in Phase 2
-- FR4.3: View medical history for a patient
+### FR4: Medical Records ✅ Complete
+- FR4.1: ✅ Create a medical record for a patient (diagnosis, prescription, notes) — API (Doctor role)
+- FR4.2: ✅ Upload medical files (PDF, JPEG, PNG) — API with extension & size validation
+- FR4.3: ✅ View medical history for a patient — API + Dashboard patient detail view
 
-### FR5: Authentication & Authorization
-- FR5.1: User login with username/password (JWT tokens)
-- FR5.2: Role-based access (admin, doctor, receptionist)
-- FR5.3: Admin can manage users; doctors can view/edit medical records; receptionists manage appointments
+### FR5: Authentication & Authorization ✅ Complete
+- FR5.1: ✅ User login with username/password (JWT tokens) — API + Dashboard login screen
+- FR5.2: ✅ Role-based access (admin, doctor, receptionist) — enforced on all endpoints
+- FR5.3: ✅ Admin can manage users (list, register) — API + Dashboard Users tab
+- FR5.4: ✅ Doctors can view patients/records, manage appointment status
+- FR5.5: ✅ Receptionists can manage patients and schedule appointments
 
-### FR6: Analytics Dashboard
-- FR6.1: Total patients, doctors, appointments count
-- FR6.2: Appointments per day/week chart data
-- FR6.3: Department-wise patient distribution
+### FR6: Analytics Dashboard ✅ Complete
+- FR6.1: ✅ Total patients, doctors, appointments count — Dashboard overview cards
+- FR6.2: ✅ Appointment status distribution (bar chart) — Dashboard overview
+- FR6.3: ✅ Department-wise patient distribution (bar chart) — Dashboard overview
 
 ---
 

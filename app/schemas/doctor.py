@@ -10,6 +10,13 @@ class DoctorCreate(BaseModel):
     user_id: Optional[int] = None
 
 
+class DoctorUpdate(BaseModel):
+    name: Optional[str] = None
+    specialization: Optional[str] = None
+    department: Optional[str] = None
+    contact: Optional[str] = None
+
+
 class DoctorOut(BaseModel):
     id: int
     name: str

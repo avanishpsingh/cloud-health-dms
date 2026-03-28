@@ -16,13 +16,14 @@ Build a simple healthcare data management app that runs locally.
 - [x] Add .gitignore
 - [x] Setup Python project (FastAPI + SQLite)
 - [x] Implement database models (Patient, Doctor, Appointment, MedicalRecord)
-- [x] Implement REST APIs (CRUD for patients, doctors, appointments, records)
-- [x] Implement basic auth (JWT-based, role: admin/doctor/receptionist)
-- [x] Implement file upload for medical reports (local filesystem)
-- [x] Build simple analytics endpoint (patient count, appointment stats)
-- [x] Add basic tests (17 tests passing)
+- [x] Implement REST APIs — full CRUD (22 endpoints total)
+- [x] Implement auth (JWT + RBAC: admin/doctor/receptionist)
+- [x] Implement file upload for medical reports
+- [x] Build analytics endpoint (counts, status breakdown, dept distribution)
 - [x] Add seed data script (3 users, 10 doctors, 100 patients, 259 appointments, 104 records)
-- [x] Add interactive HTML dashboard (overview, patients, doctors, appointments — search, pagination, detail views)
+- [x] Add interactive HTML dashboard with CRUD forms (add/edit/delete patients, doctors, users, appointments)
+- [x] Add 17 passing tests
+- [x] Update all documentation (README, dev guide, requirements, structure)
 - [ ] Record demo video
 - [ ] Prepare Phase 2 PPT
 

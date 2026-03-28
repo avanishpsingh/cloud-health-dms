@@ -5,7 +5,7 @@ from typing import Optional
 from app.database import get_db
 from app.models.doctor import Doctor
 from app.models.user import User
-from app.schemas.doctor import DoctorCreate, DoctorOut
+from app.schemas.doctor import DoctorCreate, DoctorUpdate, DoctorOut
 from app.auth import require_roles
 
 router = APIRouter(prefix="/doctors", tags=["Doctors"])
@@ -53,3 +53,33 @@ def get_doctor(
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
     return doctor
+
+
+@router.put("/{doctor_id}", response_model=DoctorOut)
+def update_doctor(
+    doctor_id: int,
+    body: DoctorUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(doctor, field, value)
+    db.commit()
+    db.refresh(doctor)
+    return doctor
+
+
+@router.delete("/{doctor_id}", status_code=204)
+def delete_doctor(
+    doctor_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    db.delete(doctor)
+    db.commit()

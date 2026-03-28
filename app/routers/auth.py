@@ -40,6 +40,14 @@ def register(
     return user
 
 
+@router.get("/users", response_model=list[UserOut])
+def list_users(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    return db.query(User).order_by(User.id.desc()).all()
+
+
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(require_roles("admin", "doctor", "receptionist"))):
     return current_user

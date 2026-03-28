@@ -64,3 +64,16 @@ def update_appointment_status(
     db.commit()
     db.refresh(appt)
     return appt
+
+
+@router.delete("/{appointment_id}", status_code=204)
+def delete_appointment(
+    appointment_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    db.delete(appt)
+    db.commit()
