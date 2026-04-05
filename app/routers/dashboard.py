@@ -140,8 +140,11 @@ tr:hover td { background:var(--gray-50); }
 <!-- APP -->
 <div id="app" style="display:none">
 <div class="header">
-    <h1>&#9764; Healthcare DMS</h1>
-    <div class="right">
+    <h1>
+        <a href="#" onclick="activateTab('overview'); return false;" style="color: inherit; text-decoration: none;">
+            &#9764; Healthcare DMS
+        </a>
+    </h1>    <div class="right">
         <span class="user-info" id="user-label"></span>
         <button class="hbtn" onclick="logout()">Logout</button>
     </div>
@@ -390,26 +393,40 @@ async function doLogin(){
     try{
         const r=await fetch(API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
         if(!r.ok){err.textContent='Invalid credentials';err.style.display='block';return;}
-        TOKEN=(await r.json()).access_token;
+        const data = await r.json();
+        TOKEN = data.access_token;
+        localStorage.setItem('hc_token', TOKEN); 
+
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app').style.display='block';
         initApp();
     }catch(e){err.textContent='Server unreachable';err.style.display='block';}
 }
-function logout(){TOKEN='';ROLE='';document.getElementById('app').style.display='none';document.getElementById('login-screen').style.display='block';}
+function logout(){
+    TOKEN='';
+    ROLE='';
+    localStorage.removeItem('hc_token');
+    document.getElementById('app').style.display='none';
+    document.getElementById('login-screen').style.display='block';
+    }
 document.getElementById('password').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 
 /* ===== Nav ===== */
 document.querySelectorAll('.nav-tab').forEach(tab=>{
     tab.addEventListener('click',()=>{
+        const pageName = tab.dataset.page;
+        localStorage.setItem('hc_current_page', pageName);
+
         document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
         document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
         tab.classList.add('active');
-        document.getElementById('pg-'+tab.dataset.page).classList.add('active');
-        if(tab.dataset.page==='patients')renderPatients();
-        if(tab.dataset.page==='doctors')renderDoctors();
-        if(tab.dataset.page==='appointments')renderAppointments();
-        if(tab.dataset.page==='users')renderUsers();
+        document.getElementById('pg-'+pageName).classList.add('active');
+        
+        if(pageName==='patients') renderPatients();
+        if(pageName==='doctors') renderDoctors();
+        if(pageName==='appointments') renderAppointments();
+        if(pageName==='users') renderUsers();
+        if(pageName==='overview') loadOverview(); 
     });
 });
 function activateTab(name){
@@ -422,14 +439,33 @@ function activateTab(name){
 
 /* ===== Init ===== */
 async function initApp(){
-    try{const me=await api('/auth/me');ROLE=me.role;CURRENT_USER=me.username;document.getElementById('user-label').textContent=me.full_name+' ('+me.role+')';}catch(e){}
+    try {
+        const me = await api('/auth/me');
+        ROLE = me.role;
+        CURRENT_USER = me.username;
+        document.getElementById('user-label').textContent = me.full_name + ' (' + me.role + ')';
+    } catch(e) {
+        // If the token is expired or invalid, force a logout
+        logout();
+        return;
+    }
+
     // Show/hide admin-only features
-    const isAdmin=ROLE==='admin';
-    document.querySelectorAll('.admin-only').forEach(el=>el.style.display=isAdmin?'':'none');
-    const usersTab=document.querySelector('.nav-tab[data-page="users"]');
-    if(usersTab)usersTab.style.display=isAdmin?'':'none';
-    await Promise.all([loadPatients(),loadDoctors(),loadAppointments(),loadUsers()]);
-    loadOverview();
+    const isAdmin = ROLE === 'admin';
+    document.querySelectorAll('.admin-only').forEach(el => el.style.display = isAdmin ? '' : 'none');
+    const usersTab = document.querySelector('.nav-tab[data-page="users"]');
+    if(usersTab) usersTab.style.display = isAdmin ? '' : 'none';
+
+    await Promise.all([loadPatients(), loadDoctors(), loadAppointments(), loadUsers()]);
+    const savedPage = localStorage.getItem('hc_current_page') || 'overview';
+    
+    activateTab(savedPage);
+    
+    if (savedPage === 'overview') loadOverview();
+    else if (savedPage === 'patients') renderPatients();
+    else if (savedPage === 'doctors') renderDoctors();
+    else if (savedPage === 'appointments') renderAppointments();
+    else if (savedPage === 'users') renderUsers();
 }
 async function loadPatients(){try{allPatients=await api('/patients/');}catch(e){allPatients=[];}}
 async function loadDoctors(){try{allDoctors=await api('/doctors/');}catch(e){allDoctors=[];} populateDeptFilter();}
@@ -720,6 +756,15 @@ document.querySelectorAll('button').forEach(b=>{
         document.getElementById('um-fullname').value='';
         document.getElementById('user-modal-err').style.display='none';
     });
+});
+window.addEventListener('DOMContentLoaded', () => {
+    const savedToken = localStorage.getItem('hc_token');
+    if (savedToken) {
+        TOKEN = savedToken;
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        initApp();
+    }
 });
 </script>
 </body>
