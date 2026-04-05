@@ -1,10 +1,14 @@
 """Shared pytest fixtures for all tests."""
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
+os.environ["AUTO_CREATE_TABLES"] = "false"
 
 from app.database import Base, get_db
 from app.main import app
