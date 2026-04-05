@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     # Database
     # Local SQLite is the safe default for development and demo videos.
     # Replace this with the RDS/Aurora PostgreSQL URL when the AWS DB is ready.
-    DATABASE_URL: str = "sqlite:///./health_dms.db"
+    DATABASE_URL: str = "postgresql+psycopg2://postgres:%23Vikas-8207@health-dms.cluster-c50s00ositsu.ap-south-1.rds.amazonaws.com:5432/postgres?sslmode=require
+"
 
     # JWT Auth
     # Use a strong secret in AWS Lambda environment variables or Secrets Manager.
@@ -47,3 +48,7 @@ settings = Settings()
 
 # Keep the local upload folder ready for Phase 1 and for Phase 2 fallback demos.
 Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+# AWS Lambda uses a read-only deployment filesystem, so we must not create local
+# directories there when S3-backed uploads are enabled.
+if not settings.USE_S3_UPLOADS:
+    Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
