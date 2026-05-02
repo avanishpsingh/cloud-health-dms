@@ -11,5 +11,10 @@ bcrypt==4.0.1
 python-multipart>=0.0.6
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
+# Phase 2 — AWS SDK + Postgres driver (optional for local SQLite runs)
+boto3>=1.34.0
+psycopg2-binary>=2.9.9
+# Test deps
 pytest>=7.4.0
 httpx>=0.24.0
+moto[s3]>=5.0.0

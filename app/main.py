@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine, Base
+from app.logging_middleware import RequestLoggingMiddleware, configure_logging
 from app.routers import auth, patients, doctors, appointments, records, analytics, dashboard
 
 try:
@@ -30,6 +31,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Per-request structured logging + X-Request-ID propagation
+app.add_middleware(RequestLoggingMiddleware)
 
 # CORS — allow all in dev, restrict in production
 app.add_middleware(

@@ -12,6 +12,7 @@ from app.models.user import User
 from app.schemas.medical_record import MedicalRecordCreate, MedicalRecordOut
 from app.auth import require_roles
 from app.storage import save_medical_record_file
+from app.storage import get_storage
 
 router = APIRouter(tags=["Medical Records"])
 
