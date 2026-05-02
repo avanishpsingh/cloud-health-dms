@@ -4,7 +4,7 @@
 
 ## Overview
 
-A cloud-native healthcare data management system designed for a mid-size hospital chain in India. Built in two phases: a working local application (Phase 1) migrated to AWS cloud infrastructure (Phase 2).
+A cloud-native healthcare data management system designed for a mid-size hospital chain in India. Built in two phases: a working local application (Phase 1) and a fully cloud-deployable AWS migration (Phase 2) with Infrastructure-as-Code, an S3 storage backend, an RDS PostgreSQL data layer, an EC2 Auto Scaling Group behind an Application Load Balancer, a serverless Lambda for appointment reminders, KMS-backed encryption, CloudTrail audit logging, and CloudWatch observability.
 
 ## Team
 - Karan Rawat — System Design & Coordination
@@ -170,10 +170,17 @@ cloud-health-dms/
 │   ├── conftest.py          # Fixtures (in-memory DB, auth tokens)
 │   ├── test_auth.py         # Auth tests (6)
 │   ├── test_patients.py     # Patient tests (7)
-│   └── test_appointments.py # Appointment tests (4)
+│   ├── test_appointments.py # Appointment tests (4)
+│   ├── test_storage.py      # Phase 2 storage backend tests (4)
+│   ├── test_lambda_reminder.py    # Phase 2 Lambda tests (3)
+│   ├── test_logging_middleware.py # Phase 2 JSON logging tests (3)
+│   └── test_upload_e2e.py   # Phase 2 upload E2E tests (2)
+├── infra/
+│   └── terraform/           # Phase 2 Infrastructure-as-Code (VPC, EC2, RDS, S3, Lambda, …)
 ├── docs/                    # Detailed project documentation
-├── uploads/                 # Medical file uploads directory
+├── uploads/                 # Medical file uploads directory (Phase 1 only)
 ├── health_dms.db            # SQLite database (pre-seeded for testing)
+├── Dockerfile               # Container image (alternative to EC2 deployment)
 ├── requirements.txt         # Python dependencies
 └── README.md
 ```
@@ -192,10 +199,22 @@ To re-seed: delete `health_dms.db` and run `python scripts/seed.py`.
 ## Tests
 
 ```bash
-python -m pytest tests/ -v    # 17 tests
+python -m pytest tests/ -v    # 29 tests (17 Phase 1 + 12 Phase 2)
 ```
 
 Tests use an in-memory SQLite database (isolated from production data).
+Phase 2 tests use [`moto`](https://github.com/getmoto/moto) to mock S3 and SNS,
+so no AWS credentials are required to run them.
+
+| Suite                            | Tests | Covers                                                        |
+|----------------------------------|------:|---------------------------------------------------------------|
+| `test_auth.py`                   | 6     | Login, JWT, RBAC                                              |
+| `test_patients.py`               | 7     | Patient CRUD                                                  |
+| `test_appointments.py`           | 4     | Appointment lifecycle                                         |
+| `test_storage.py`                | 4     | LocalStorage + S3Storage round trips, factory selection       |
+| `test_lambda_reminder.py`        | 3     | Window filter, dry-run, SNS publish                           |
+| `test_logging_middleware.py`     | 3     | JSON formatter, request ID, idempotent configure              |
+| `test_upload_e2e.py`             | 2     | End-to-end medical-file upload via the storage abstraction    |
 
 ## Security Features
 - **JWT Authentication** — All API endpoints (except login) require a valid token
@@ -216,3 +235,103 @@ See [docs/](docs/) for detailed documentation:
 - [Security & Compliance](docs/05-security-compliance.md)
 - [Project Structure](docs/06-project-structure.md)
 - [Development Guide](docs/07-development-guide.md)
+
+---
+
+## Phase 2 — AWS Cloud Deployment
+
+Phase 2 ships the same FastAPI codebase to AWS with **zero code changes** required at the call sites — the storage and database layers are pluggable via environment variables.
+
+### Cloud Architecture
+
+```
+                          Route 53 (DNS, optional)
+                                  │
+                                  ▼
+                  ┌──────── Application Load Balancer ────────┐
+                  │           (public subnets)                │
+                  ▼                                           ▼
+         EC2 Auto Scaling Group (private subnets, min=1, max=3)
+         │                                                    │
+         ▼                                                    ▼
+   RDS PostgreSQL 15                              S3 (medical files)
+   (Multi-AZ, encrypted)                          (SSE-KMS, versioned)
+         │
+         ▼
+   AWS Lambda (appointment_reminder) ── EventBridge cron (15 min) ── SNS topic
+                                                                       │
+                                                                       ▼
+                                                                 Email / SMS
+
+Cross-cutting: VPC · IAM · KMS · CloudTrail · CloudWatch Logs + Alarms
+```
+
+### What changed between Phase 1 and Phase 2
+
+| Concern         | Phase 1 (local)                    | Phase 2 (AWS)                                                |
+|-----------------|------------------------------------|--------------------------------------------------------------|
+| Compute         | `uvicorn` on localhost             | EC2 ASG (min 1, max 3) behind ALB, CPU target tracking 60%   |
+| Database        | SQLite file                        | RDS PostgreSQL 15 Multi-AZ, KMS-encrypted, in private subnet |
+| File storage    | `./uploads/` on disk               | S3 bucket, SSE-KMS, versioned, 7-year HIPAA lifecycle        |
+| Notifications   | (none)                             | Lambda (every 15 min) → SNS → email/SMS                      |
+| Logging         | Plain text → stdout                | JSON → CloudWatch Logs (`/aws/ec2/healthdms`)               |
+| Auth            | JWT (app-level)                    | JWT + IAM (cloud-level), IMDSv2-only EC2                    |
+| Audit           | (none)                             | CloudTrail (multi-region, KMS-encrypted, log file validation)|
+| Alerts          | (none)                             | CloudWatch alarms for ALB 5xx and ASG CPU > 80%             |
+
+### Pluggable storage — switch backends with one env var
+
+```bash
+# Local (Phase 1 default)
+export STORAGE_BACKEND=local
+
+# S3 (Phase 2)
+export STORAGE_BACKEND=s3
+export S3_BUCKET=healthdms-dev-files-abc123
+export S3_KMS_KEY_ID=arn:aws:kms:ap-south-1:123456789012:key/...
+export AWS_REGION=ap-south-1
+```
+
+The same goes for the database — set `DATABASE_URL=postgresql+psycopg2://...` to switch from SQLite to RDS.
+
+### One-command AWS deployment
+
+```bash
+cd infra/terraform
+terraform init
+terraform apply -auto-approve \
+  -var "db_password=<strong password>" \
+  -var "key_pair_name=<your EC2 key>" \
+  -var "alarm_email=you@example.com"
+
+# After ~12 minutes:
+terraform output alb_url    # → http://healthdms-dev-alb-xxx.elb.amazonaws.com/dashboard
+
+# Tear down to stop AWS billing
+terraform destroy -auto-approve -var "db_password=<same>" -var "key_pair_name=<same>"
+```
+
+See [infra/terraform/README.md](infra/terraform/README.md) for the full IaC walk-through, cost estimate, and production-hardening notes.
+
+### Container deployment (alternative)
+
+```bash
+docker build -t healthdms .
+docker run --rm -p 8000:8000 \
+  -e STORAGE_BACKEND=local \
+  -e DATABASE_URL=sqlite:///./health_dms.db \
+  healthdms
+```
+
+The same image runs on AWS App Runner, ECS Fargate, or any Kubernetes cluster.
+
+### Mapping to Phase 1 Objectives
+
+| Objective | Implementation in Phase 2                                                    |
+|-----------|------------------------------------------------------------------------------|
+| O1 — Auto-scale to 3× peak     | EC2 ASG min=1/max=3 + TargetTracking on 60% CPU             |
+| O2 — Unified data, < 200ms     | Single RDS PostgreSQL Multi-AZ, indexed primary keys        |
+| O3 — Security & compliance     | IAM least-privilege, KMS CMK, SSE-KMS S3, CloudTrail, IMDSv2|
+| O4 — Serverless analytics      | Lambda + SNS for reminders; structured JSON → CloudWatch    |
+| O5 — Cost reduction            | t3.micro instances, single NAT, lifecycle to Glacier        |
+| O6 — 99.9% availability        | Multi-AZ RDS, 2-AZ ALB + ASG, ELB health checks             |

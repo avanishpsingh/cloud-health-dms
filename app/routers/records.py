@@ -1,4 +1,3 @@
-import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -12,6 +11,7 @@ from app.models.doctor import Doctor
 from app.models.user import User
 from app.schemas.medical_record import MedicalRecordCreate, MedicalRecordOut
 from app.auth import require_roles
+from app.storage import get_storage
 
 router = APIRouter(tags=["Medical Records"])
 
@@ -74,11 +74,10 @@ def upload_file(
     if len(contents) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large")
 
-    # Save to local filesystem (Phase 1); Phase 2 will use S3
-    filename = f"{uuid.uuid4().hex}{ext}"
-    filepath = Path(settings.UPLOAD_DIR) / filename
-    filepath.write_bytes(contents)
+    # Save via the configured backend (LocalStorage in Phase 1, S3Storage in Phase 2)
+    storage = get_storage()
+    key = storage.save(file.filename, contents, content_type=file.content_type or "application/octet-stream")
 
-    record.file_path = str(filepath)
+    record.file_path = key
     db.commit()
-    return {"message": "File uploaded", "file_path": str(filepath)}
+    return {"message": "File uploaded", "file_path": key, "backend": settings.STORAGE_BACKEND}

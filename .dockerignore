@@ -1,0 +1,13 @@
+.git
+.venv
+venv
+.pdfvenv
+__pycache__
+*.pyc
+tests
+docs
+infra
+uploads
+health_dms.db
+.env
+.pytest_cache

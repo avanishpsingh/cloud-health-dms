@@ -3,16 +3,23 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine, Base
+from app.logging_middleware import RequestLoggingMiddleware, configure_logging
 from app.routers import auth, patients, doctors, appointments, records, analytics, dashboard
+
+# Configure JSON / plain logging based on env (CloudWatch ingests JSON in Phase 2)
+configure_logging()
 
 # Create all tables on startup
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Cloud-Native Healthcare Data Management System — Phase 1 (Local)",
-    version="1.0.0",
+    description="Cloud-Native Healthcare Data Management System",
+    version="2.0.0",
 )
+
+# Per-request structured logging + X-Request-ID propagation
+app.add_middleware(RequestLoggingMiddleware)
 
 # CORS — allow all in dev, restrict in production
 app.add_middleware(
