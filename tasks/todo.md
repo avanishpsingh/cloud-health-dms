@@ -54,12 +54,15 @@
 - [x] `report/CC_Project_Code_Group23.pdf` — generated via `scripts/generate_code_pdf.py`
 - [x] `tasks/lessons.md` updated with Phase 2 lessons
 
+### Automated deliverables (DONE)
+- [x] **Generated** `CC_Project_PPT_Group23.pptx` via `scripts/generate_pptx.py` (polished design)
+- [x] **Bundled** `CC_Project_Implementation23.zip` (438 KB) at workspace root containing PPT, code PDF, report PDF, Phase 1 PDF, README, outline, demo script
+
 ### Remaining manual work (cannot be automated by the agent)
 - [ ] **Run `terraform apply`** in a real AWS account (needs credentials + ~$3 budget alarm)
 - [ ] **Confirm SNS email subscription** (click link in inbox)
-- [ ] **Record the demo video** following `report/Demo_Video_Script.md`; export as `CC_Project_Demo_Group23.mp4`
-- [ ] **Convert** `report/Phase2_PPT_Outline.md` to a `.pptx` (Marp / PowerPoint) and save as `CC_Project_PPT_Group23.pptx`
-- [ ] **Bundle** everything into `CC_Project_Implementation23.zip` (PPT, MP4, code PDF, report PDF, README, infra/, app/, tests/) and upload to Taxila LMS by 03-May-2026
+- [ ] **Record the demo video** following `report/Demo_Video_Script.md`; export as `CC_Project_Demo_Group23.mp4`, drop into `CC_Project_Implementation23/`, delete the placeholder `.README.txt`, then re-zip
+- [ ] **Upload** `CC_Project_Implementation23.zip` to Taxila LMS by 03-May-2026
 - [ ] **Run `terraform destroy`** after the demo to stop AWS billing
 
 ## Phase 3 — Final Presentation (04-10 May 2026)
