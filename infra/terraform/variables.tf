@@ -37,9 +37,20 @@ variable "instance_type" {
   default     = "t3.micro"
 }
 
-variable "asg_min" { type = number  default = 1 }
-variable "asg_max" { type = number  default = 3 }
-variable "asg_desired" { type = number  default = 2 }
+variable "asg_min" {
+  type    = number
+  default = 1
+}
+
+variable "asg_max" {
+  type    = number
+  default = 3
+}
+
+variable "asg_desired" {
+  type    = number
+  default = 2
+}
 
 variable "key_pair_name" {
   description = "Existing EC2 key pair name for SSH access (optional)."

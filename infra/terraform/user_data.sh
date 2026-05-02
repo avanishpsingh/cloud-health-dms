@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # EC2 user-data — bootstraps the FastAPI app on Amazon Linux 2023.
-# Variables in ${...} are interpolated by Terraform's templatefile().
+# Variables in $${...} are interpolated by Terraform's templatefile().
 set -euxo pipefail
 
 # 1. Base packages

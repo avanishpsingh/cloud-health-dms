@@ -6,11 +6,47 @@
 # - Lambda role grants RDS network access (via SG) + SNS publish + logs.
 ###############################################################################
 
-# ---- KMS CMK shared by RDS + S3 ---------------------------------------------
+# ---- KMS CMK shared by RDS + S3 + CloudTrail + CloudWatch ------------------
+data "aws_iam_policy_document" "kms_policy" {
+  statement {
+    sid       = "EnableRootAdmin"
+    actions   = ["kms:*"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.me.account_id}:root"]
+    }
+  }
+  statement {
+    sid       = "AllowCloudTrail"
+    actions   = ["kms:GenerateDataKey*", "kms:DescribeKey"]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+  }
+  statement {
+    sid       = "AllowCloudWatchLogs"
+    actions   = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["logs.ap-south-1.amazonaws.com"]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:aws:logs:ap-south-1:${data.aws_caller_identity.me.account_id}:*"]
+    }
+  }
+}
+
 resource "aws_kms_key" "data" {
-  description             = "${local.name} — encrypts S3 medical files & RDS storage"
+  description             = "${local.name} - encrypts S3 medical files and RDS storage"
   enable_key_rotation     = true
   deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.kms_policy.json
   tags                    = { Name = "${local.name}-kms" }
 }
 
@@ -49,7 +85,7 @@ resource "aws_security_group" "alb" {
 
 resource "aws_security_group" "app" {
   name        = "${local.name}-app-sg"
-  description = "FastAPI app — only ALB may hit :8000"
+  description = "FastAPI app - only ALB may hit port 8000"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -80,7 +116,7 @@ resource "aws_security_group" "app" {
 
 resource "aws_security_group" "db" {
   name        = "${local.name}-db-sg"
-  description = "RDS PostgreSQL — only the app SG may connect"
+  description = "RDS PostgreSQL - only the app SG may connect"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -100,7 +136,7 @@ resource "aws_security_group" "db" {
 
 resource "aws_security_group" "lambda" {
   name        = "${local.name}-lambda-sg"
-  description = "Lambda ENIs in the VPC — egress only"
+  description = "Lambda ENIs in the VPC - egress only"
   vpc_id      = aws_vpc.main.id
 
   egress {
