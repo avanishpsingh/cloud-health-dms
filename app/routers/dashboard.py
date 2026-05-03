@@ -355,6 +355,22 @@ tr:hover td { background:var(--gray-50); }
     </div>
 </div></div>
 
+<!-- Add Medical Record Modal -->
+<div id="record-modal" class="modal-overlay">
+<div class="modal">
+    <h3>Add Medical Record</h3>
+    <div id="record-modal-err" class="err" style="display:none"></div>
+    <div style="font-size:.83rem;color:var(--gray-500);margin-bottom:12px" id="record-modal-meta"></div>
+    <label>Diagnosis *</label><input id="rm-diagnosis" placeholder="Primary diagnosis">
+    <label>Prescription</label><textarea id="rm-prescription" placeholder="Medication and dosage"></textarea>
+    <label>Notes</label><textarea id="rm-notes" placeholder="Additional notes"></textarea>
+    <label>Upload File (PDF/image) *</label><input id="rm-file" type="file" accept=".pdf,.jpg,.jpeg,.png">
+    <div class="btn-row">
+        <button class="btn" style="background:var(--gray-200)" onclick="closeModal('record-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveMedicalRecordFromAppointment()">Save Record</button>
+    </div>
+</div></div>
+
 <script>
 /* ===== State ===== */
 const API='';
@@ -362,6 +378,8 @@ let TOKEN='',ROLE='',CURRENT_USER='';
 let allPatients=[],allDoctors=[],allAppointments=[],allUsers=[];
 const PAGE_SIZE=15;
 let patientPage=1,apptPage=1;
+let selectedRecordApptId = null;
+let selectedRecordPatientId = null;
 
 /* ===== Helpers ===== */
 const _e=document.createElement('div');
@@ -673,7 +691,7 @@ function renderAppointments(){
         '<td><span class="clickable" onclick="showDoctorDetail('+a.doctor_id+')">'+esc(doctorName(a.doctor_id))+'</span></td>'+
         '<td>'+fmtDate(a.date_time)+'</td><td>'+esc(a.reason)+'</td>'+
         '<td><span class="badge '+a.status+'" style="cursor:pointer" onclick="openStatusModal('+a.id+',\''+a.status+'\')">'+a.status+'</span></td>'+
-        '<td><button class="btn btn-danger btn-sm" onclick="deleteAppointment('+a.id+')">Del</button></td></tr>'
+        '<td><div class="action-btns"><button class="btn btn-primary btn-sm" onclick="openRecordModal('+a.id+','+a.patient_id+','+a.doctor_id+')">Add Record</button><button class="btn btn-danger btn-sm" onclick="deleteAppointment('+a.id+')">Del</button></div></td></tr>'
     ).join('')||'<tr><td colspan="7" class="empty">No appointments found</td></tr>';
     renderPagination('appts-pagination',apptPage,pages,p=>{apptPage=p;renderAppointments();},total);
 }
@@ -712,6 +730,72 @@ async function changeApptStatus(){
         await loadAppointments();renderAppointments();loadOverview();
     }catch(e){toast('Error: '+e.message,'error');}
 }
+function openRecordModal(apptId, patientId, doctorId){
+    selectedRecordApptId = apptId;
+    selectedRecordPatientId = patientId;
+    document.getElementById('record-modal-err').style.display='none';
+    document.getElementById('record-modal-meta').textContent = 'Appointment #' + apptId + ' | Patient: ' + patientName(patientId) + ' | Doctor: ' + doctorName(doctorId);
+    document.getElementById('rm-diagnosis').value='';
+    document.getElementById('rm-prescription').value='';
+    document.getElementById('rm-notes').value='';
+    document.getElementById('rm-file').value='';
+    openModal('record-modal');
+}
+
+async function saveMedicalRecordFromAppointment(){
+    const err=document.getElementById('record-modal-err');
+    err.style.display='none';
+    const diagnosis=document.getElementById('rm-diagnosis').value.trim();
+    const prescription=document.getElementById('rm-prescription').value.trim();
+    const notes=document.getElementById('rm-notes').value.trim();
+    const fileInput=document.getElementById('rm-file');
+    if(!selectedRecordApptId){
+        err.textContent='Appointment not selected';
+        err.style.display='block';
+        return;
+    }
+    if(!diagnosis){
+        err.textContent='Diagnosis is required';
+        err.style.display='block';
+        return;
+    }
+    if(!fileInput.files || !fileInput.files[0]){
+        err.textContent='Please select a file';
+        err.style.display='block';
+        return;
+    }
+
+    const form = new FormData();
+    form.append('diagnosis', diagnosis);
+    form.append('prescription', prescription);
+    form.append('notes', notes);
+    form.append('file', fileInput.files[0]);
+
+    try{
+        const r=await fetch(API+'/appointments/'+selectedRecordApptId+'/records',{
+            method:'POST',
+            headers:{'Authorization':'Bearer '+TOKEN},
+            body:form,
+        });
+        if(!r.ok){
+            const e=await r.json().catch(()=>({}));
+            throw new Error(e.detail||r.statusText||'Failed to save medical record');
+        }
+        toast('Medical record added','success');
+        closeModal('record-modal');
+
+        // Refresh related datasets to show the new record immediately.
+        await Promise.all([loadPatients(), loadDoctors(), loadAppointments()]);
+        renderAppointments();
+        if(selectedRecordPatientId){
+            await showPatientDetail(selectedRecordPatientId);
+        }
+    }catch(e){
+        err.textContent=e.message;
+        err.style.display='block';
+    }
+}
+
 async function deleteAppointment(id){
     if(!confirm('Delete this appointment?'))return;
     try{await apiDelete('/appointments/'+id);toast('Appointment deleted','success');await loadAppointments();renderAppointments();loadOverview();}

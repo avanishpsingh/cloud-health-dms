@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.models.appointment import Appointment
 from app.models.medical_record import MedicalRecord
 from app.models.patient import Patient
 from app.models.doctor import Doctor
@@ -81,3 +82,53 @@ def upload_file(
     record.file_path = key
     db.commit()
     return {"message": "File uploaded", "file_path": key, "backend": settings.STORAGE_BACKEND}
+
+
+@router.post("/appointments/{appointment_id}/records", response_model=MedicalRecordOut, status_code=201)
+def create_record_from_appointment(
+    appointment_id: int,
+    diagnosis: str = Form(...),
+    prescription: str = Form(""),
+    notes: str = Form(""),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("doctor", "admin")),
+):
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    if not db.query(Patient).filter(Patient.id == appointment.patient_id, Patient.is_active == True).first():
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    # Doctor can add records only for their own appointments.
+    if current_user.role == "doctor":
+        doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+        if not doctor:
+            raise HTTPException(status_code=400, detail="No doctor profile linked to this user")
+        if doctor.id != appointment.doctor_id:
+            raise HTTPException(status_code=403, detail="You can only add records for your own appointments")
+
+    # Validate upload
+    ext = Path(file.filename).suffix.lower()
+    if ext not in settings.ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File type {ext} not allowed")
+    contents = file.file.read()
+    if len(contents) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large")
+
+    storage = get_storage()
+    key = storage.save(file.filename, contents, content_type=file.content_type or "application/octet-stream")
+
+    record = MedicalRecord(
+        patient_id=appointment.patient_id,
+        doctor_id=appointment.doctor_id,
+        diagnosis=diagnosis,
+        prescription=prescription,
+        notes=notes,
+        file_path=key,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
