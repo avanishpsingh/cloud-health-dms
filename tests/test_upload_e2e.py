@@ -82,3 +82,43 @@ def test_upload_rejects_disallowed_extension(client, db, monkeypatch, tmp_path):
     assert resp.status_code == 400
     assert "not allowed" in resp.json()["detail"]
     storage_mod.reset_storage()
+
+
+def test_record_file_link_and_open_local_backend(client, db, monkeypatch, tmp_path):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "STORAGE_BACKEND", "local")
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    storage_mod.reset_storage()
+
+    doc_user = User(username="updoc3", password_hash=hash_password("p"), full_name="D", role="doctor")
+    db.add(doc_user)
+    db.flush()
+    doctor = Doctor(user_id=doc_user.id, name="D", specialization="X", department="Y", contact="9")
+    db.add(doctor)
+    patient = Patient(name="P", age=30, gender="M", contact="9", address="A", blood_group="O+", is_active=True)
+    db.add(patient)
+    db.flush()
+    record = MedicalRecord(patient_id=patient.id, doctor_id=doctor.id, diagnosis="d", prescription="p", notes="n")
+    db.add(record)
+    db.commit()
+
+    token = client.post("/auth/login", json={"username": "updoc3", "password": "p"}).json()["access_token"]
+
+    fake_pdf = b"%PDF-1.4 open me"
+    upload = client.post(
+        f"/upload/{record.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("report.pdf", fake_pdf, "application/pdf")},
+    )
+    assert upload.status_code == 200
+
+    link = client.get(f"/records/{record.id}/file-link", headers={"Authorization": f"Bearer {token}"})
+    assert link.status_code == 200
+    assert link.json()["mode"] == "proxy"
+    assert link.json()["url"] == f"/records/{record.id}/file"
+
+    file_resp = client.get(f"/records/{record.id}/file", headers={"Authorization": f"Bearer {token}"})
+    assert file_resp.status_code == 200
+    assert file_resp.content == fake_pdf
+    storage_mod.reset_storage()

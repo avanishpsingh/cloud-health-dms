@@ -200,7 +200,7 @@ tr:hover td { background:var(--gray-50); }
             </div>
             <div class="detail-grid" id="pd-fields"></div>
             <h3 style="margin:18px 0 12px;color:var(--primary)">Medical Records</h3>
-            <table><thead><tr><th>Date</th><th>Doctor</th><th>Diagnosis</th><th>Prescription</th><th>Notes</th></tr></thead>
+            <table><thead><tr><th>Date</th><th>Doctor</th><th>Diagnosis</th><th>Prescription</th><th>Notes</th><th>File</th></tr></thead>
             <tbody id="pd-records"></tbody></table>
             <h3 style="margin:18px 0 12px;color:var(--primary)">Appointments</h3>
             <table><thead><tr><th>Date &amp; Time</th><th>Doctor</th><th>Reason</th><th>Status</th></tr></thead>
@@ -404,6 +404,27 @@ function patientName(id){const p=allPatients.find(x=>x.id===id);return p?p.name:
 function fmtDate(s){if(!s)return'-';const d=new Date(s);return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});}
 function detailFields(obj){return Object.entries(obj).map(([k,v])=>'<div class="detail-field"><div class="dfk">'+esc(k)+'</div><div class="dfv">'+esc(v)+'</div></div>').join('');}
 
+async function openRecordFile(recordId){
+    try{
+        const link = await api('/records/'+recordId+'/file-link');
+        if(link.mode === 'direct'){
+            window.open(link.url, '_blank', 'noopener');
+            return;
+        }
+
+        const r = await fetch(API + link.url, { headers: { 'Authorization': 'Bearer ' + TOKEN } });
+        if(!r.ok){
+            throw new Error('Unable to open uploaded file');
+        }
+        const blob = await r.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        window.open(objectUrl, '_blank', 'noopener');
+        setTimeout(()=>URL.revokeObjectURL(objectUrl), 60000);
+    }catch(e){
+        toast(e.message || 'Unable to open file', 'error');
+    }
+}
+
 /* ===== Auth ===== */
 async function doLogin(){
     const u=document.getElementById('username').value,p=document.getElementById('password').value;
@@ -535,8 +556,13 @@ async function showPatientDetail(id){
     activateTab('patients');
     try{
         const recs=await api('/patients/'+id+'/records');
-        document.getElementById('pd-records').innerHTML=recs.map(r=>'<tr><td>'+fmtDate(r.created_at)+'</td><td><span class="clickable" onclick="showDoctorDetail('+r.doctor_id+')">'+esc(doctorName(r.doctor_id))+'</span></td><td>'+esc(r.diagnosis)+'</td><td>'+esc(r.prescription)+'</td><td>'+esc(r.notes)+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">No medical records</td></tr>';
-    }catch(e){document.getElementById('pd-records').innerHTML='<tr><td colspan="5" class="empty">Access denied or error</td></tr>';}
+        document.getElementById('pd-records').innerHTML=recs.map(r=>{
+            const fileBtn = r.file_path
+                ? '<button class="btn btn-primary btn-sm" onclick="openRecordFile('+r.id+')">View</button>'
+                : '<span class="empty">-</span>';
+            return '<tr><td>'+fmtDate(r.created_at)+'</td><td><span class="clickable" onclick="showDoctorDetail('+r.doctor_id+')">'+esc(doctorName(r.doctor_id))+'</span></td><td>'+esc(r.diagnosis)+'</td><td>'+esc(r.prescription)+'</td><td>'+esc(r.notes)+'</td><td>'+fileBtn+'</td></tr>';
+        }).join('')||'<tr><td colspan="6" class="empty">No medical records</td></tr>';
+    }catch(e){document.getElementById('pd-records').innerHTML='<tr><td colspan="6" class="empty">Access denied or error</td></tr>';}
     const appts=allAppointments.filter(a=>a.patient_id===id);
     document.getElementById('pd-appointments').innerHTML=appts.map(a=>'<tr><td>'+fmtDate(a.date_time)+'</td><td><span class="clickable" onclick="showDoctorDetail('+a.doctor_id+')">'+esc(doctorName(a.doctor_id))+'</span></td><td>'+esc(a.reason)+'</td><td><span class="badge '+a.status+'">'+a.status+'</span></td></tr>').join('')||'<tr><td colspan="4" class="empty">No appointments</td></tr>';
 }

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -15,6 +16,55 @@ from app.auth import require_roles
 from app.storage import get_storage
 
 router = APIRouter(tags=["Medical Records"])
+
+
+@router.get("/records/{record_id}/file-link")
+def get_record_file_link(
+    record_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin", "doctor")),
+):
+    """Return link metadata used by the dashboard to open uploaded files."""
+    record = db.query(MedicalRecord).filter(MedicalRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if not record.file_path:
+        raise HTTPException(status_code=404, detail="No file uploaded for this record")
+
+    backend = (getattr(settings, "STORAGE_BACKEND", "local") or "local").lower()
+    if backend == "s3":
+        storage = get_storage()
+        return {"mode": "direct", "url": storage.url(record.file_path)}
+
+    # Local mode: dashboard fetches this API route with Authorization header.
+    return {"mode": "proxy", "url": f"/records/{record_id}/file"}
+
+
+@router.get("/records/{record_id}/file")
+def get_record_file(
+    record_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin", "doctor")),
+):
+    """Serve uploaded file bytes for local storage, or redirect for S3."""
+    record = db.query(MedicalRecord).filter(MedicalRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if not record.file_path:
+        raise HTTPException(status_code=404, detail="No file uploaded for this record")
+
+    storage = get_storage()
+    file_url = storage.url(record.file_path)
+    backend = (getattr(settings, "STORAGE_BACKEND", "local") or "local").lower()
+
+    if backend == "s3":
+        return RedirectResponse(url=file_url, status_code=307)
+
+    local_file = Path(file_url)
+    if not local_file.exists():
+        raise HTTPException(status_code=404, detail="Uploaded file not found")
+
+    return FileResponse(path=str(local_file), filename=local_file.name)
 
 
 @router.get("/patients/{patient_id}/records", response_model=list[MedicalRecordOut])
