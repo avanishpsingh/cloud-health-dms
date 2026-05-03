@@ -685,13 +685,14 @@ function renderAppointments(){
     if(apptPage>pages)apptPage=pages;
     const start=(apptPage-1)*PAGE_SIZE,slice=f.slice(start,start+PAGE_SIZE);
     document.getElementById('appts-count-label').textContent='All Appointments ('+total+')';
+    const canAddRecord = ROLE === 'admin' || ROLE === 'doctor';
     document.getElementById('appts-tbody').innerHTML=slice.map(a=>
         '<tr><td>'+a.id+'</td>'+
         '<td><span class="clickable" onclick="showPatientDetail('+a.patient_id+')">'+esc(patientName(a.patient_id))+'</span></td>'+
         '<td><span class="clickable" onclick="showDoctorDetail('+a.doctor_id+')">'+esc(doctorName(a.doctor_id))+'</span></td>'+
         '<td>'+fmtDate(a.date_time)+'</td><td>'+esc(a.reason)+'</td>'+
         '<td><span class="badge '+a.status+'" style="cursor:pointer" onclick="openStatusModal('+a.id+',\''+a.status+'\')">'+a.status+'</span></td>'+
-        '<td><div class="action-btns"><button class="btn btn-primary btn-sm" onclick="openRecordModal('+a.id+','+a.patient_id+','+a.doctor_id+')">Add Record</button><button class="btn btn-danger btn-sm" onclick="deleteAppointment('+a.id+')">Del</button></div></td></tr>'
+        '<td><div class="action-btns">'+(canAddRecord ? '<button class="btn btn-primary btn-sm" onclick="openRecordModal('+a.id+','+a.patient_id+','+a.doctor_id+')">Add Record</button>' : '')+'<button class="btn btn-danger btn-sm" onclick="deleteAppointment('+a.id+')">Del</button></div></td></tr>'
     ).join('')||'<tr><td colspan="7" class="empty">No appointments found</td></tr>';
     renderPagination('appts-pagination',apptPage,pages,p=>{apptPage=p;renderAppointments();},total);
 }
@@ -731,6 +732,10 @@ async function changeApptStatus(){
     }catch(e){toast('Error: '+e.message,'error');}
 }
 function openRecordModal(apptId, patientId, doctorId){
+    if (ROLE === 'receptionist') {
+        toast('Only doctors and admins can create medical records', 'error');
+        return;
+    }
     selectedRecordApptId = apptId;
     selectedRecordPatientId = patientId;
     document.getElementById('record-modal-err').style.display='none';
