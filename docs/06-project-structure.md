@@ -4,7 +4,6 @@
 cloud-health-dms/
 ├── .gitignore
 ├── README.md
-├── WorkFlow.md
 ├── requirements.txt
 ├── health_dms.db            # SQLite database (pre-seeded, tracked in git)
 │
@@ -14,10 +13,6 @@ cloud-health-dms/
 ├── Cloud_Phase1_PPTs/
 │   └── Cloud Phase_1_260320_172940.pdf
 │
-├── tasks/
-│   ├── todo.md              # Task tracking
-│   └── lessons.md           # Lessons learned
-│
 ├── docs/
 │   ├── 01-project-overview.md
 │   ├── 02-requirements.md
@@ -26,6 +21,13 @@ cloud-health-dms/
 │   ├── 05-security-compliance.md
 │   ├── 06-project-structure.md    (this file)
 │   └── 07-development-guide.md
+│
+├── report/
+│   ├── CC_Project_PPT_Group23.pptx
+│   ├── CC_Project_Report_Group23.pdf
+│   ├── CC_Project_Code_Group23.pdf
+│   ├── Phase2_Report.md
+│   └── Demo_Video_Script.md
 │
 ├── app/                     # Main application
 │   ├── __init__.py
@@ -60,15 +62,22 @@ cloud-health-dms/
 ├── scripts/
 │   └── seed.py              # Generate sample data (100 patients, 10 doctors, ~259 appointments)
 │
+├── infra/
+│   └── terraform/           # AWS IaC (VPC, EC2 ASG, ALB, RDS, S3, Lambda, CloudWatch)
+│
 ├── uploads/                 # Local file storage for medical reports (Phase 1)
 │   └── .gitkeep
 │
-└── tests/                   # Pytest test suite (17 tests)
+└── tests/                   # Pytest test suite (29 tests)
     ├── __init__.py
     ├── conftest.py          # Test fixtures (in-memory DB, auth tokens)
     ├── test_auth.py         # 6 auth tests
     ├── test_patients.py     # 7 patient tests
-    └── test_appointments.py # 4 appointment tests
+    ├── test_appointments.py # 4 appointment tests
+    ├── test_storage.py      # Storage backend tests
+    ├── test_lambda_reminder.py
+    ├── test_logging_middleware.py
+    └── test_upload_e2e.py
 ```
 
 ## Key Design Decisions
