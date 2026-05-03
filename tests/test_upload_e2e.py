@@ -122,3 +122,52 @@ def test_record_file_link_and_open_local_backend(client, db, monkeypatch, tmp_pa
     assert file_resp.status_code == 200
     assert file_resp.content == fake_pdf
     storage_mod.reset_storage()
+
+
+def test_record_file_link_and_open_s3_backend(client, db, monkeypatch):
+    moto = pytest.importorskip("moto", reason="install moto to run S3 tests")
+    boto3 = pytest.importorskip("boto3")
+    from app.config import settings
+
+    with moto.mock_aws():
+        s3 = boto3.client("s3", region_name="ap-south-1")
+        bucket = "test-medical-files"
+        s3.create_bucket(Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": "ap-south-1"})
+
+        monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
+        monkeypatch.setattr(settings, "S3_BUCKET", bucket)
+        monkeypatch.setattr(settings, "AWS_REGION", "ap-south-1")
+        monkeypatch.setattr(settings, "S3_KMS_KEY_ID", "")
+        storage_mod.reset_storage()
+
+        doc_user = User(username="updoc4", password_hash=hash_password("p"), full_name="D", role="doctor")
+        db.add(doc_user)
+        db.flush()
+        doctor = Doctor(user_id=doc_user.id, name="D", specialization="X", department="Y", contact="9")
+        db.add(doctor)
+        patient = Patient(name="P", age=30, gender="M", contact="9", address="A", blood_group="O+", is_active=True)
+        db.add(patient)
+        db.flush()
+        record = MedicalRecord(patient_id=patient.id, doctor_id=doctor.id, diagnosis="d", prescription="p", notes="n")
+        db.add(record)
+        db.commit()
+
+        token = client.post("/auth/login", json={"username": "updoc4", "password": "p"}).json()["access_token"]
+        fake_pdf = b"%PDF-1.4 s3 proxy"
+
+        upload = client.post(
+            f"/upload/{record.id}",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": ("report.pdf", fake_pdf, "application/pdf")},
+        )
+        assert upload.status_code == 200
+
+        link = client.get(f"/records/{record.id}/file-link", headers={"Authorization": f"Bearer {token}"})
+        assert link.status_code == 200
+        assert link.json()["mode"] == "proxy"
+        assert link.json()["url"] == f"/records/{record.id}/file"
+
+        file_resp = client.get(f"/records/{record.id}/file", headers={"Authorization": f"Bearer {token}"})
+        assert file_resp.status_code == 200
+        assert file_resp.content == fake_pdf
+        storage_mod.reset_storage()

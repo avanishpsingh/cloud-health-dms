@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -31,12 +31,7 @@ def get_record_file_link(
     if not record.file_path:
         raise HTTPException(status_code=404, detail="No file uploaded for this record")
 
-    backend = (getattr(settings, "STORAGE_BACKEND", "local") or "local").lower()
-    if backend == "s3":
-        storage = get_storage()
-        return {"mode": "direct", "url": storage.url(record.file_path)}
-
-    # Local mode: dashboard fetches this API route with Authorization header.
+    # Always proxy through app API so GUI uses one stable, authenticated path.
     return {"mode": "proxy", "url": f"/records/{record_id}/file"}
 
 
@@ -46,19 +41,37 @@ def get_record_file(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles("admin", "doctor")),
 ):
-    """Serve uploaded file bytes for local storage, or redirect for S3."""
+    """Serve uploaded file bytes for both local storage and S3 storage."""
     record = db.query(MedicalRecord).filter(MedicalRecord.id == record_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
     if not record.file_path:
         raise HTTPException(status_code=404, detail="No file uploaded for this record")
 
-    storage = get_storage()
-    file_url = storage.url(record.file_path)
     backend = (getattr(settings, "STORAGE_BACKEND", "local") or "local").lower()
 
     if backend == "s3":
-        return RedirectResponse(url=file_url, status_code=307)
+        import boto3  # type: ignore
+
+        bucket = settings.S3_BUCKET
+        if not bucket:
+            raise HTTPException(status_code=500, detail="S3 bucket is not configured")
+
+        client = boto3.client("s3", region_name=settings.AWS_REGION)
+        try:
+            obj = client.get_object(Bucket=bucket, Key=record.file_path)
+        except client.exceptions.NoSuchKey:
+            raise HTTPException(status_code=404, detail="Uploaded file not found")
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to fetch file from S3: {exc}")
+
+        content_type = obj.get("ContentType") or "application/octet-stream"
+        filename = Path(record.file_path).name
+        headers = {"Content-Disposition": f'inline; filename="{filename}"'}
+        return StreamingResponse(obj["Body"], media_type=content_type, headers=headers)
+
+    storage = get_storage()
+    file_url = storage.url(record.file_path)
 
     local_file = Path(file_url)
     if not local_file.exists():
