@@ -31,11 +31,12 @@ LOG_LEVEL=INFO
 EOF
 chmod 600 /opt/app/.env
 
-# 5. Seed the DB on the first instance only (idempotent — guards on existing rows)
+# 5. Create tables and seed demo data (idempotent on repeated instance boots)
 /opt/app/venv/bin/python -c "
 from app.database import Base, engine
 Base.metadata.create_all(bind=engine)
 " || true
+/opt/app/venv/bin/python /opt/app/scripts/seed.py || true
 
 # 6. systemd unit for uvicorn
 cat > /etc/systemd/system/healthdms.service <<'UNIT'

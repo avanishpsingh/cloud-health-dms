@@ -76,8 +76,17 @@ terraform destroy -auto-approve -var "db_password=ChangeMe123!" -var "key_pair_n
 3. Writes `/opt/app/.env` from EC2 instance metadata + Terraform-injected
    values (RDS endpoint, S3 bucket, KMS key, SNS topic, JSON_LOGS=True).
 4. Installs `requirements.txt` (+ `boto3`).
-5. Starts `uvicorn` as a `systemd` unit (`healthdms.service`) listening on `:8000`.
-6. Starts the CloudWatch agent so logs flow to `/aws/ec2/healthdms`.
+5. Creates tables and seeds the demo data if the database is empty.
+6. Starts `uvicorn` as a `systemd` unit (`healthdms.service`) listening on `:8000`.
+7. Starts the CloudWatch agent so logs flow to `/aws/ec2/healthdms`.
+
+If an older stack was deployed before this bootstrap step existed and dashboard login fails with `Invalid credentials`, seed the running environment once:
+
+```bash
+curl -X POST http://<alb-dns>/auth/seed
+```
+
+Then log in with `admin / admin123`.
 
 ## Cost estimate (us-east-1, on-demand)
 

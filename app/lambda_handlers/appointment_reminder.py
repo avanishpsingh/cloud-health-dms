@@ -58,8 +58,11 @@ def _publish_to_sns(sns_client, topic_arn: str, message: dict) -> str | None:
 
 def find_due_appointments(db, hours_ahead: int = 24) -> list:
     """Query RDS for scheduled appointments inside the reminder window."""
-    # Imported here so unit tests can stub the DB without importing the whole app.
-    from app.models.appointment import Appointment
+    # Imported lazily so tests can patch DB/session and Lambda zip paths still work.
+    try:
+        from app.models.appointment import Appointment
+    except ModuleNotFoundError:  # Lambda zip may place modules at /var/task root
+        from models.appointment import Appointment
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     window_end = now + timedelta(hours=hours_ahead)
@@ -81,7 +84,19 @@ def lambda_handler(event: dict, context: Any) -> dict:
         {"published": int, "skipped": int, "ids": [...]}.
     """
     # Lazy imports keep cold-start small if some deps are missing in tests.
-    from app.database import SessionLocal
+    try:
+        from app.database import SessionLocal
+    except ModuleNotFoundError:
+        try:
+            from database import SessionLocal
+        except ModuleNotFoundError as exc:
+            logger.warning("database dependencies unavailable in Lambda runtime: %s", exc)
+            return {
+                "published": 0,
+                "skipped": 0,
+                "ids": [],
+                "warning": "database dependencies unavailable in Lambda runtime",
+            }
 
     topic_arn = os.environ.get("SNS_TOPIC_ARN", "")
     hours_ahead = int(os.environ.get("REMINDER_WINDOW_HOURS", "24"))
