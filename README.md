@@ -2,6 +2,15 @@
 
 **BITS Pilani | Cloud Computing (CSIZG527) | Group 23**
 
+## Repository
+
+- **GitHub**: https://github.com/avanishpsingh/cloud-health-dms
+- **Clone**:
+
+  ```bash
+  git clone https://github.com/avanishpsingh/cloud-health-dms.git
+  ```
+
 ## Overview
 
 A cloud-native healthcare data management system designed for a mid-size hospital chain in India. Built in two phases: a working local application (Phase 1) and a fully cloud-deployable AWS migration (Phase 2) with Infrastructure-as-Code, an S3 storage backend, an RDS PostgreSQL data layer, an EC2 Auto Scaling Group behind an Application Load Balancer, a serverless Lambda for appointment reminders, KMS-backed encryption, CloudTrail audit logging, and CloudWatch observability.
@@ -130,7 +139,8 @@ The interactive dashboard at `/dashboard` provides a complete hospital managemen
 | Method | Endpoint | Access | Description |
 |--------|----------|--------|-------------|
 | GET | `/patients/{id}/records` | Admin, Doctor | Get patient's medical history |
-| POST | `/patients/{id}/records` | Doctor | Add medical record |
+| POST | `/patients/{id}/records` | Doctor | Add medical record (legacy) |
+| POST | `/appointments/{appointment_id}/records` | Admin, Doctor (own) | **GUI-driven**: create medical record with optional file upload, directly from the appointments view |
 | POST | `/upload/{record_id}` | Doctor, Admin | Upload medical file (PDF/JPEG/PNG) |
 
 ### Analytics
@@ -166,15 +176,16 @@ cloud-health-dms/
 │       └── dashboard.py     # HTML dashboard SPA
 ├── scripts/
 │   └── seed.py              # Generate sample data (100 patients, 10 doctors)
-├── tests/                   # Pytest test suite (17 tests)
+├── tests/                   # Pytest test suite (30 tests)
 │   ├── conftest.py          # Fixtures (in-memory DB, auth tokens)
 │   ├── test_auth.py         # Auth tests (6)
 │   ├── test_patients.py     # Patient tests (7)
 │   ├── test_appointments.py # Appointment tests (4)
-│   ├── test_storage.py      # Phase 2 storage backend tests (4)
+│   ├── test_storage.py      # Phase 2 storage backend tests (4, skipped without moto)
 │   ├── test_lambda_reminder.py    # Phase 2 Lambda tests (3)
 │   ├── test_logging_middleware.py # Phase 2 JSON logging tests (3)
-│   └── test_upload_e2e.py   # Phase 2 upload E2E tests (2)
+│   ├── test_upload_e2e.py   # Phase 2 upload E2E tests (4)
+│   └── test_medical_records_gui_flow.py # Phase 2 GUI Add Record tests (2)
 ├── infra/
 │   └── terraform/           # Phase 2 Infrastructure-as-Code (VPC, EC2, RDS, S3, Lambda, …)
 ├── docs/                    # Detailed project documentation
@@ -199,22 +210,24 @@ To re-seed: delete `health_dms.db` and run `python scripts/seed.py`.
 ## Tests
 
 ```bash
-python -m pytest tests/ -v    # 29 tests (17 Phase 1 + 12 Phase 2)
+python -m pytest tests/ -v    # 30 tests (28 pass + 2 skipped without moto)
 ```
 
 Tests use an in-memory SQLite database (isolated from production data).
-Phase 2 tests use [`moto`](https://github.com/getmoto/moto) to mock S3 and SNS,
-so no AWS credentials are required to run them.
+Phase 2 storage tests use [`moto`](https://github.com/getmoto/moto) to mock S3,
+so no AWS credentials are required to run them. If `moto` is not installed,
+those 2 tests are auto-skipped (the rest still pass).
 
-| Suite                            | Tests | Covers                                                        |
-|----------------------------------|------:|---------------------------------------------------------------|
-| `test_auth.py`                   | 6     | Login, JWT, RBAC                                              |
-| `test_patients.py`               | 7     | Patient CRUD                                                  |
-| `test_appointments.py`           | 4     | Appointment lifecycle                                         |
-| `test_storage.py`                | 4     | LocalStorage + S3Storage round trips, factory selection       |
-| `test_lambda_reminder.py`        | 3     | Window filter, dry-run, SNS publish                           |
-| `test_logging_middleware.py`     | 3     | JSON formatter, request ID, idempotent configure              |
-| `test_upload_e2e.py`             | 2     | End-to-end medical-file upload via the storage abstraction    |
+| Suite                                | Tests | Covers                                                        |
+|--------------------------------------|------:|---------------------------------------------------------------|
+| `test_auth.py`                       | 6     | Login, JWT, RBAC                                              |
+| `test_patients.py`                   | 7     | Patient CRUD                                                  |
+| `test_appointments.py`               | 4     | Appointment lifecycle                                         |
+| `test_storage.py`                    | 4     | LocalStorage + S3Storage round trips (skipped w/o moto)       |
+| `test_lambda_reminder.py`            | 3     | Window filter, dry-run, SNS publish                           |
+| `test_logging_middleware.py`         | 3     | JSON formatter, request ID, idempotent configure              |
+| `test_upload_e2e.py`                 | 4     | End-to-end medical-file upload via the storage abstraction    |
+| `test_medical_records_gui_flow.py`   | 2     | New Phase 2 GUI flow — add medical record from appointment row, role-based guard |
 
 ## Security Features
 - **JWT Authentication** — All API endpoints (except login) require a valid token
@@ -294,24 +307,150 @@ export AWS_REGION=ap-south-1
 
 The same goes for the database — set `DATABASE_URL=postgresql+psycopg2://...` to switch from SQLite to RDS.
 
-### One-command AWS deployment
+### Step-by-step AWS deployment
+
+The entire stack is provisioned by Terraform under `infra/terraform/` (~600 LOC, 10 `.tf` files). Follow the steps below to host the app on AWS and launch it.
+
+#### 1. Prerequisites
+
+| Tool | Version | Install |
+|------|---------|---------|
+| AWS CLI | 2.x | https://aws.amazon.com/cli/ |
+| Terraform | ≥ 1.5 | https://developer.hashicorp.com/terraform/downloads |
+| AWS account | — | Free-tier eligible; needs permissions for VPC, EC2, RDS, S3, IAM, KMS, Lambda, CloudWatch, CloudTrail, SNS |
+| EC2 key pair | — | Create in **EC2 → Key Pairs** in the chosen region (default: `ap-south-1`) — used for SSH into instances |
+
+#### 2. Configure AWS credentials
 
 ```bash
-cd infra/terraform
-terraform init
-terraform apply -auto-approve \
-  -var "db_password=<strong password>" \
-  -var "key_pair_name=<your EC2 key>" \
-  -var "alarm_email=you@example.com"
+aws configure
+# AWS Access Key ID:     <your key>
+# AWS Secret Access Key: <your secret>
+# Default region name:   ap-south-1
+# Default output format: json
 
-# After ~12 minutes:
-terraform output alb_url    # → http://healthdms-dev-alb-xxx.elb.amazonaws.com/dashboard
-
-# Tear down to stop AWS billing
-terraform destroy -auto-approve -var "db_password=<same>" -var "key_pair_name=<same>"
+aws sts get-caller-identity     # verify credentials work
 ```
 
-See [infra/terraform/README.md](infra/terraform/README.md) for the full IaC walk-through, cost estimate, and production-hardening notes.
+#### 3. Initialise Terraform
+
+```bash
+cd cloud-health-dms/infra/terraform
+terraform init                  # downloads AWS + random providers
+terraform validate              # syntax check
+terraform plan \
+  -var "db_password=ChangeMe_Strong#2026" \
+  -var "key_pair_name=my-ec2-key" \
+  -var "alarm_email=you@example.com"
+```
+
+Required variables:
+
+| Variable | Example | Notes |
+|----------|---------|-------|
+| `db_password` | `ChangeMe_Strong#2026` | RDS master password (≥ 8 chars, no `/`, `@`, `"`, spaces) |
+| `key_pair_name` | `my-ec2-key` | Existing EC2 key pair name in the target region |
+| `alarm_email` | `you@example.com` | Receives CloudWatch alarms via SNS (confirm subscription email) |
+
+Optional overrides (defaults in `variables.tf`): `aws_region` (`ap-south-1`), `project_name` (`healthdms`), `environment` (`dev`), `instance_type` (`t3.micro`), `db_instance_class` (`db.t3.micro`).
+
+#### 4. Apply (provision the stack)
+
+```bash
+terraform apply -auto-approve \
+  -var "db_password=ChangeMe_Strong#2026" \
+  -var "key_pair_name=my-ec2-key" \
+  -var "alarm_email=you@example.com"
+```
+
+Provisioning takes **~12–15 minutes** (RDS Multi-AZ is the long pole). Resources created:
+
+- VPC (10.0.0.0/16) with 2 public + 2 private subnets across 2 AZs, IGW, single NAT
+- Application Load Balancer (public) + target group + HTTP listener on :80
+- EC2 launch template (Amazon Linux 2023, IMDSv2-only) + Auto Scaling Group (min 1, max 3, desired 1) with CPU target tracking @ 60 %
+- RDS PostgreSQL 15 Multi-AZ, KMS-encrypted, in private subnet, security group allows only the EC2 SG
+- S3 bucket for medical files: SSE-KMS, versioning on, public access blocked, 7-year HIPAA lifecycle (→ Glacier after 90 days)
+- KMS Customer Managed Key with rotation enabled (used by RDS, S3, CloudTrail)
+- Lambda function `appointment_reminder` (Python 3.11) + EventBridge cron (every 15 min) + SNS topic
+- CloudTrail (multi-region, KMS-encrypted, log-file validation) → dedicated S3 bucket
+- CloudWatch log groups (`/aws/ec2/healthdms`, `/aws/lambda/...`) and alarms (ALB 5xx > 5/min, ASG CPU > 80 %)
+
+#### 5. Launch & verify the app
+
+```bash
+terraform output                         # full output map
+terraform output -raw alb_dns_name       # e.g. healthdms-dev-alb-12345.ap-south-1.elb.amazonaws.com
+terraform output -raw alb_url            # full URL
+
+# Wait ~2 minutes after apply finishes for the EC2 user-data script to:
+#   1. install Python + dependencies
+#   2. fetch the app code
+#   3. run database migrations
+#   4. start uvicorn under systemd (port 8000, behind ALB on :80)
+
+# Health check
+curl http://$(terraform output -raw alb_dns_name)/
+
+# Open the dashboard in a browser:
+#   http://<alb_dns_name>/dashboard
+#   default login: admin / admin123
+```
+
+The EC2 user-data script (`infra/terraform/user_data.sh`) wires the app to AWS by exporting:
+
+```
+STORAGE_BACKEND=s3
+S3_BUCKET=<from terraform output>
+S3_KMS_KEY_ID=<from terraform output>
+DATABASE_URL=postgresql+psycopg2://<user>:<pwd>@<rds-endpoint>:5432/healthdms
+AWS_REGION=ap-south-1
+```
+
+These are read by `app/config.py`, so the same FastAPI code that ran on SQLite/local in Phase 1 now reads/writes to RDS and S3 with no source changes.
+
+#### 6. Post-deploy checks
+
+```bash
+# Confirm ASG instance is healthy in the target group
+aws elbv2 describe-target-health \
+  --target-group-arn $(terraform output -raw target_group_arn) --region ap-south-1
+
+# Tail application logs
+aws logs tail /aws/ec2/healthdms --since 10m --follow --region ap-south-1
+
+# Trigger reminder Lambda manually (instead of waiting for the 15-min cron)
+aws lambda invoke --function-name healthdms-dev-appointment-reminder \
+  --region ap-south-1 /tmp/out.json && cat /tmp/out.json
+
+# Confirm the SNS subscription email — open the link in the message AWS sent
+#   you on apply (otherwise alarms won't email you)
+```
+
+#### 7. Common troubleshooting
+
+| Symptom | Likely cause / fix |
+|---------|--------------------|
+| ALB returns `502 Bad Gateway` for 2–3 min | EC2 user-data still installing — wait, then retry |
+| ALB returns `502` after 5+ min | SSH into instance (`ec2-user@<private-ip>` via bastion or SSM Session Manager), check `journalctl -u healthdms -n 100` |
+| `terraform apply` fails on RDS | Password contains forbidden chars (`/ @ " space`) or is too short |
+| Lambda `AccessDenied` to SNS | KMS key policy not yet replicated — re-run `terraform apply` |
+| No alarm emails | SNS subscription not confirmed — check inbox / spam for AWS confirmation link |
+
+#### 8. Tear down (stop AWS billing)
+
+```bash
+cd cloud-health-dms/infra/terraform
+terraform destroy -auto-approve \
+  -var "db_password=ChangeMe_Strong#2026" \
+  -var "key_pair_name=my-ec2-key" \
+  -var "alarm_email=you@example.com"
+```
+
+Destroy takes ~8–10 minutes (RDS deletion is the long pole). After it completes, verify in the AWS Console that VPC, RDS, ALB, ASG, S3 buckets, and KMS keys are gone (KMS keys enter a 7-day pending-deletion window — that's expected).
+
+> **Cost note**: with the defaults (t3.micro EC2, db.t3.micro RDS Multi-AZ, single NAT, ap-south-1) the stack costs roughly **₹250–350 / day** if left running. Always `terraform destroy` after demos.
+
+See [infra/terraform/README.md](infra/terraform/README.md) for the full IaC walk-through, module reference, cost breakdown, and production-hardening notes.
 
 ### Container deployment (alternative)
 
